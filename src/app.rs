@@ -12,6 +12,9 @@ pub struct ThaiEstimateApp {
     // boq form
     b_project: i64, b_material: i64, b_qty: String, b_price: String,
     status_msg: String,
+    pdf_path: String,
+    viewer: Option<crate::pdf::PdfViewer>,
+    measure_points: Vec<(f32, f32)>,
 }
 
 impl ThaiEstimateApp {
@@ -23,6 +26,9 @@ impl ThaiEstimateApp {
             m_name: String::new(), m_unit: "หน่วย".into(), m_mp: String::new(), m_lp: String::new(),
             b_project: 0, b_material: 0, b_qty: String::new(), b_price: String::new(),
             status_msg: String::new(),
+            pdf_path: String::new(),
+            viewer: None,
+            measure_points: vec![],
         }
     }
 }
@@ -53,6 +59,7 @@ impl eframe::App for ThaiEstimateApp {
                 ui.selectable_value(&mut self.tab, 0, "📋 โครงการ");
                 ui.selectable_value(&mut self.tab, 1, "🧱 คลังราคา");
                 ui.selectable_value(&mut self.tab, 2, "📊 BOQ");
+                ui.selectable_value(&mut self.tab, 3, "📐 ถอดแบบ");
             });
             ui.separator();
 
@@ -60,6 +67,7 @@ impl eframe::App for ThaiEstimateApp {
                 0 => self.projects_tab(ui),
                 1 => self.materials_tab(ui),
                 2 => self.boq_tab(ui),
+                3 => self.pdf_tab(ui),
                 _ => {}
             }
 
@@ -187,5 +195,54 @@ impl ThaiEstimateApp {
                 ui.label(egui::RichText::new(format!("รวมทั้งสิ้น: {:.2} บาท", grand)).size(20.0).strong().color(egui::Color32::from_rgb(255, 210, 90)));
             }
         } else { ui.label("เลือกโครงการเพื่อดู BOQ"); }
+    }
+
+    fn pdf_tab(&mut self, ui: &mut egui::Ui) {
+        ui.heading("ถอดแบบ PDF");
+        ui.horizontal(|ui| {
+            ui.label("ไฟล์ PDF:");
+            ui.text_edit_singleline(&mut self.pdf_path);
+            if ui.button("📂 เปิด").clicked() {
+                match crate::pdf::PdfViewer::new(&self.pdf_path) {
+                    Ok(v) => { self.viewer = Some(v); self.measure_points.clear(); self.status_msg = "เปิด PDF สำเร็จ".into(); }
+                    Err(e) => self.status_msg = format!("เปิด PDF ไม่สำเร็จ: {e}"),
+                }
+            }
+        });
+        if let Some(viewer) = &mut self.viewer {
+            ui.horizontal(|ui| {
+                ui.label("หน้า:");
+                ui.label(format!("{}/{}", viewer.page_index + 1, viewer.total_pages));
+                if ui.button("◀").clicked() && viewer.page_index > 0 { viewer.page_index -= 1; }
+                if ui.button("▶").clicked() && viewer.page_index + 1 < viewer.total_pages { viewer.page_index += 1; }
+                ui.label("ซูม:");
+                ui.add(egui::Slider::new(&mut viewer.scale, 0.5..=4.0).suffix("x"));
+            });
+            match viewer.render_page() {
+                Ok((bytes, w, h)) => {
+                    let ctx = ui.ctx().clone();
+                    let image = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &bytes);
+                    let texture = ctx.load_texture("pdf_page", image, egui::TextureOptions::default());
+                    let (rect, response) = ui.allocate_exact_size(egui::vec2(w as f32, h as f32), egui::Sense::click());
+                    ui.painter().image(texture.id(), rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+                    if response.clicked() {
+                        if let Some(pos) = response.interact_pointer_pos() {
+                            let local = pos - rect.min;
+                            self.measure_points.push((local.x, local.y));
+                        }
+                    }
+                    if self.measure_points.len() >= 2 {
+                        let p = self.measure_points[self.measure_points.len()-2];
+                        let q = self.measure_points[self.measure_points.len()-1];
+                        let dist = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt();
+                        ui.label(egui::RichText::new(format!("ระยะ: {:.1} px", dist)).color(egui::Color32::from_rgb(120, 220, 140)));
+                    }
+                    if ui.button("🗑 ล้างจุดวัด").clicked() { self.measure_points.clear(); }
+                }
+                Err(e) => { ui.label(format!("Render ไม่สำเร็จ: {e}")); }
+            }
+        } else {
+            ui.label("กรอก path ไฟล์ PDF แล้วกดเปิด");
+        }
     }
 }

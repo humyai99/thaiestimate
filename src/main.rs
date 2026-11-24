@@ -1,4 +1,5 @@
 mod db;
+mod pdf;
 mod app;
 
 fn main() -> eframe::Result {
