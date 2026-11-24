@@ -12,8 +12,18 @@ pub struct PdfViewer {
 }
 
 fn pdfium() -> Result<Pdfium> {
-    let bindings = Pdfium::bind_to_library("/home/linuxbrew/.linuxbrew/lib/python3.14/site-packages/pypdfium2_raw/libpdfium.so")
-        .or_else(|_| Pdfium::bind_to_system_library())?;
+    // ลำดับ: 1) libpdfium.so ข้างไฟล์ exe 2) ระบบ 3) เส้นทาง pypdfium2
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    if let Some(dir) = exe_dir {
+        let bundled = dir.join("libpdfium.so");
+        if bundled.exists() {
+            if let Ok(bindings) = Pdfium::bind_to_library(bundled.to_string_lossy().as_ref()) {
+                return Ok(Pdfium::new(bindings));
+            }
+        }
+    }
+    let bindings = Pdfium::bind_to_system_library()
+        .or_else(|_| Pdfium::bind_to_library("/home/linuxbrew/.linuxbrew/lib/python3.14/site-packages/pypdfium2_raw/libpdfium.so"))?;
     Ok(Pdfium::new(bindings))
 }
 
