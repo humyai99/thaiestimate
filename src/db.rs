@@ -18,6 +18,11 @@ pub fn init() -> Result<Connection> {
             group_id INTEGER, name_th TEXT, name_en TEXT,
             unit TEXT, material_price REAL, labor_price REAL
         );
+        CREATE TABLE IF NOT EXISTS steel_bars (
+            id INTEGER PRIMARY KEY,
+            project_id INTEGER, diameter REAL, length REAL, count INTEGER,
+            weight_per_m REAL
+        );
         CREATE TABLE IF NOT EXISTS boq_items (
             id INTEGER PRIMARY KEY,
             project_id INTEGER, material_id INTEGER,
@@ -79,5 +84,27 @@ pub fn add_boq_item(conn: &Connection, project_id: i64, material_id: i64, qty: f
 
 pub fn delete_boq_item(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM boq_items WHERE id=?1", params![id])?;
+    Ok(())
+}
+
+pub struct SteelBar { pub id: i64, pub project_id: i64, pub diameter: f64, pub length: f64, pub count: i64, pub weight_per_m: f64 }
+
+pub fn add_steel_bar(conn: &Connection, project_id: i64, diameter: f64, length: f64, count: i64) -> Result<i64> {
+    // น้ำหนักเหล็ก (kg/m) = diameter^2 * 0.00617
+    let weight_per_m = diameter * diameter * 0.00617;
+    conn.execute("INSERT INTO steel_bars (project_id, diameter, length, count, weight_per_m) VALUES (?1,?2,?3,?4,?5)", params![project_id, diameter, length, count, weight_per_m])?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_steel_bars(conn: &Connection, project_id: i64) -> Result<Vec<SteelBar>> {
+    let mut stmt = conn.prepare("SELECT id, project_id, diameter, length, count, weight_per_m FROM steel_bars WHERE project_id=?1 ORDER BY id")?;
+    let rows = stmt.query_map(params![project_id], |r| Ok(SteelBar { id: r.get(0)?, project_id: r.get(1)?, diameter: r.get(2)?, length: r.get(3)?, count: r.get(4)?, weight_per_m: r.get(5)? }))?;
+    let mut out = vec![];
+    for r in rows { out.push(r?); }
+    Ok(out)
+}
+
+pub fn delete_steel_bar(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM steel_bars WHERE id=?1", params![id])?;
     Ok(())
 }

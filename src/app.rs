@@ -15,6 +15,7 @@ pub struct ThaiEstimateApp {
     pdf_path: String,
     viewer: Option<crate::pdf::PdfViewer>,
     measure_points: Vec<(f32, f32)>,
+    s_diameter: String, s_length: String, s_count: String,
 }
 
 impl ThaiEstimateApp {
@@ -29,6 +30,7 @@ impl ThaiEstimateApp {
             pdf_path: String::new(),
             viewer: None,
             measure_points: vec![],
+            s_diameter: String::new(), s_length: String::new(), s_count: String::new(),
         }
     }
 }
@@ -60,6 +62,7 @@ impl eframe::App for ThaiEstimateApp {
                 ui.selectable_value(&mut self.tab, 1, "🧱 คลังราคา");
                 ui.selectable_value(&mut self.tab, 2, "📊 BOQ");
                 ui.selectable_value(&mut self.tab, 3, "📐 ถอดแบบ");
+                ui.selectable_value(&mut self.tab, 4, "🔩 เหล็ก");
             });
             ui.separator();
 
@@ -68,6 +71,7 @@ impl eframe::App for ThaiEstimateApp {
                 1 => self.materials_tab(ui),
                 2 => self.boq_tab(ui),
                 3 => self.pdf_tab(ui),
+                4 => self.steel_tab(ui),
                 _ => {}
             }
 
@@ -280,5 +284,54 @@ impl ThaiEstimateApp {
         } else {
             ui.label("กรอก path ไฟล์ PDF แล้วกดเปิด");
         }
+    }
+
+    fn steel_tab(&mut self, ui: &mut egui::Ui) {
+        ui.heading("แผนตัดเหล็ก (Bar Cut List)");
+        let projects = db::list_projects(&self.conn).unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.label("โครงการ:");
+            egui::ComboBox::from_id_salt("steel_proj").selected_text(if self.b_project == 0 { "เลือก".into() } else { projects.iter().find(|p| p.id == self.b_project).map(|p| p.name.clone()).unwrap_or_default() }).show_ui(ui, |ui| {
+                for p in &projects { ui.selectable_value(&mut self.b_project, p.id, &p.name); }
+            });
+        });
+        ui.horizontal(|ui| {
+            ui.label("เส้นผ่าศูนย์กลาง (mm):"); ui.text_edit_singleline(&mut self.s_diameter);
+            ui.label("ความยาว (m):"); ui.text_edit_singleline(&mut self.s_length);
+            ui.label("จำนวน:"); ui.text_edit_singleline(&mut self.s_count);
+        });
+        if ui.button("➕ เพิ่มเหล็ก").clicked() {
+            let d: f64 = self.s_diameter.parse().unwrap_or(0.0);
+            let l: f64 = self.s_length.parse().unwrap_or(0.0);
+            let c: i64 = self.s_count.parse().unwrap_or(0);
+            if self.b_project == 0 { self.status_msg = "เลือกโครงการก่อน".into(); }
+            else {
+                match db::add_steel_bar(&self.conn, self.b_project, d, l, c) {
+                    Ok(_) => { self.status_msg = "เพิ่มเหล็กสำเร็จ".into(); self.s_diameter.clear(); self.s_length.clear(); self.s_count.clear(); }
+                    Err(e) => self.status_msg = format!("ผิดพลาด: {e}"),
+                }
+            }
+        }
+        ui.separator();
+        if self.b_project != 0 {
+            if let Ok(bars) = db::list_steel_bars(&self.conn, self.b_project) {
+                let mut total_weight = 0.0;
+                let mut total_count = 0;
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for b in &bars {
+                        let weight = b.weight_per_m * b.length * b.count as f64;
+                        total_weight += weight;
+                        total_count += b.count;
+                        ui.horizontal(|ui| {
+                            ui.label(format!("Ø{:.0}mm | {:.2}m | x{} | {:.1}kg/m | น้ำหนักรวม {:.1}kg", b.diameter, b.length, b.count, b.weight_per_m, weight));
+                            if ui.button("🗑").clicked() { let _ = db::delete_steel_bar(&self.conn, b.id); }
+                        });
+                    }
+                    if bars.is_empty() { ui.label("ยังไม่มีเหล็ก"); }
+                });
+                ui.separator();
+                ui.label(egui::RichText::new(format!("รวม {} เส้น | น้ำหนักรวม {:.1} kg", total_count, total_weight)).size(18.0).strong().color(egui::Color32::from_rgb(255, 210, 90)));
+            }
+        } else { ui.label("เลือกโครงการเพื่อดูแผนตัดเหล็ก"); }
     }
 }
