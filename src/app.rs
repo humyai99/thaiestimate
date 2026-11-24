@@ -317,8 +317,8 @@ impl ThaiEstimateApp {
             ui.horizontal(|ui| {
                 ui.label("หน้า:");
                 ui.label(format!("{}/{}", viewer.page_index + 1, viewer.total_pages));
-                if ui.button("◀").clicked() && viewer.page_index > 0 { viewer.page_index -= 1; }
-                if ui.button("▶").clicked() && viewer.page_index + 1 < viewer.total_pages { viewer.page_index += 1; }
+                if ui.button("◀").clicked() && viewer.page_index > 0 { viewer.page_index -= 1; let _ = viewer.update_page_dims(); }
+                if ui.button("▶").clicked() && viewer.page_index + 1 < viewer.total_pages { viewer.page_index += 1; let _ = viewer.update_page_dims(); }
                 ui.label("ซูม:");
                 ui.add(egui::Slider::new(&mut viewer.scale, 0.5..=4.0).suffix("x"));
                 ui.label("มาตราส่วน:");

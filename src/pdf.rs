@@ -10,8 +10,9 @@ pub struct PdfViewer {
     pub total_pages: i32,
     // มาตราส่วนแยกตามหน้า: page_index -> real_unit_per_px
     pub page_scales: HashMap<i32, f64>,
-    // จุดวัดเก็บเป็นพิกัด PDF (ไม่ใช่พิกัดหน้าจอ)
-    pub points: Vec<(f64, f64)>,
+    // เก็บขนาดหน้า (pdf-px) แคชไว้
+    pub page_w: f64,
+    pub page_h: f64,
 }
 
 fn pdfium() -> Result<Pdfium> {
@@ -37,7 +38,19 @@ impl PdfViewer {
         let pdfium = pdfium()?;
         let pdf = pdfium.load_pdf_from_file(path, None)?;
         let total = pdf.pages().len();
-        Ok(Self { path: path.to_string(), scale: 1.5, page_index: 0, total_pages: total, page_scales: HashMap::new(), points: vec![] })
+        let page = pdf.pages().get(0)?;
+        let page_w = page.width().value as f64;
+        let page_h = page.height().value as f64;
+        Ok(Self { path: path.to_string(), scale: 1.5, page_index: 0, total_pages: total, page_scales: HashMap::new(), page_w, page_h })
+    }
+
+    pub fn update_page_dims(&mut self) -> Result<()> {
+        let pdfium = pdfium()?;
+        let pdf = pdfium.load_pdf_from_file(&self.path, None)?;
+        let page = pdf.pages().get(self.page_index)?;
+        self.page_w = page.width().value as f64;
+        self.page_h = page.height().value as f64;
+        Ok(())
     }
 
     pub fn current_scale(&self) -> f64 {
@@ -50,29 +63,19 @@ impl PdfViewer {
 
     // แปลงพิกัดหน้าจอ (local) เป็นพิกัด PDF
     pub fn screen_to_pdf(&self, local_x: f32, local_y: f32) -> (f64, f64) {
-        let pdfium = pdfium().unwrap();
-        let pdf = pdfium.load_pdf_from_file(&self.path, None).unwrap();
-        let page = pdf.pages().get(self.page_index).unwrap();
-        let page_w = page.width().value as f64;
-        let page_h = page.height().value as f64;
-        let rendered_w = page_w * self.scale as f64;
-        let rendered_h = page_h * self.scale as f64;
-        let pdf_x = local_x as f64 / rendered_w * page_w;
-        let pdf_y = local_y as f64 / rendered_h * page_h;
+        let rendered_w = self.page_w * self.scale as f64;
+        let rendered_h = self.page_h * self.scale as f64;
+        let pdf_x = local_x as f64 / rendered_w * self.page_w;
+        let pdf_y = local_y as f64 / rendered_h * self.page_h;
         (pdf_x, pdf_y)
     }
 
     // แปลงพิกัด PDF เป็นพิกัดหน้าจอ (local)
     pub fn pdf_to_screen(&self, pdf_x: f64, pdf_y: f64) -> (f32, f32) {
-        let pdfium = pdfium().unwrap();
-        let pdf = pdfium.load_pdf_from_file(&self.path, None).unwrap();
-        let page = pdf.pages().get(self.page_index).unwrap();
-        let page_w = page.width().value as f64;
-        let page_h = page.height().value as f64;
-        let rendered_w = page_w * self.scale as f64;
-        let rendered_h = page_h * self.scale as f64;
-        let screen_x = pdf_x / page_w * rendered_w;
-        let screen_y = pdf_y / page_h * rendered_h;
+        let rendered_w = self.page_w * self.scale as f64;
+        let rendered_h = self.page_h * self.scale as f64;
+        let screen_x = pdf_x / self.page_w * rendered_w;
+        let screen_y = pdf_y / self.page_h * rendered_h;
         (screen_x as f32, screen_y as f32)
     }
 
