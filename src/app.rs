@@ -23,6 +23,12 @@ pub struct ThaiEstimateApp {
     smart_annotations: Vec<(egui::Pos2, String)>,
     s_diameter: String, s_length: String, s_count: String,
     loaded_measurement: Option<crate::db::TakeoffMeasurement>,
+    markup_tool: i32, // 0=text, 1=highlight, 2=pen, 3=arrow
+    highlight_rects: Vec<(egui::Pos2, egui::Pos2)>,
+    pen_strokes: Vec<Vec<egui::Pos2>>,
+    current_pen_stroke: Vec<egui::Pos2>,
+    arrow_start: Option<egui::Pos2>,
+    arrows: Vec<(egui::Pos2, egui::Pos2)>,
 }
 
 impl ThaiEstimateApp {
@@ -54,6 +60,12 @@ impl ThaiEstimateApp {
             smart_annotations: vec![],
             s_diameter: String::new(), s_length: String::new(), s_count: String::new(),
             loaded_measurement: None,
+            markup_tool: 0,
+            highlight_rects: vec![],
+            pen_strokes: vec![],
+            current_pen_stroke: vec![],
+            arrow_start: None,
+            arrows: vec![],
         }
     }
 }
@@ -383,9 +395,24 @@ impl ThaiEstimateApp {
                                 }
                                 2 => { self.smart_count += 1; }
                                 3 => {
-                                    if !self.smart_text.is_empty() {
-                                        self.smart_annotations.push((pos, self.smart_text.clone()));
-                                        self.smart_text.clear();
+                                    match self.markup_tool {
+                                        0 => { // text
+                                            if !self.smart_text.is_empty() {
+                                                self.smart_annotations.push((pos, self.smart_text.clone()));
+                                                self.smart_text.clear();
+                                            }
+                                        }
+                                        1 => { // highlight — drag
+                                            self.highlight_rects.push((pos, pos));
+                                        }
+                                        2 => { // pen — start stroke
+                                            self.current_pen_stroke = vec![pos];
+                                        }
+                                        3 => { // arrow
+                                            if self.arrow_start.is_none() { self.arrow_start = Some(pos); }
+                                            else { self.arrows.push((self.arrow_start.unwrap(), pos)); self.arrow_start = None; }
+                                        }
+                                        _ => {}
                                     }
                                 }
                                 4 => {
@@ -396,6 +423,34 @@ impl ThaiEstimateApp {
                             }
                         }
                     }
+                    // จัดการ drag สำหรับ highlight และ pen
+                    if self.smart_mode == 3 {
+                        if self.markup_tool == 1 && response.dragged() {
+                            if let Some(pos) = response.interact_pointer_pos() {
+                                if let Some(last) = self.highlight_rects.last_mut() {
+                                    last.1 = pos;
+                                }
+                            }
+                        }
+                        if self.markup_tool == 2 && response.dragged() {
+                            if let Some(pos) = response.interact_pointer_pos() {
+                                self.current_pen_stroke.push(pos);
+                            }
+                        }
+                        if self.markup_tool == 2 && response.drag_stopped() {
+                            if !self.current_pen_stroke.is_empty() {
+                                self.pen_strokes.push(self.current_pen_stroke.clone());
+                                self.current_pen_stroke.clear();
+                            }
+                        }
+                        if self.markup_tool == 1 && response.drag_stopped() {
+                            if let Some(last) = self.highlight_rects.last_mut() {
+                                if (last.0 - last.1).length() < 5.0 {
+                                    self.highlight_rects.pop(); // ลบ rect เล็กเกินไป
+                                }
+                            }
+                        }
+                    }
                     // วาด annotation และ rectangle
                     for (pos, text) in &self.smart_annotations {
                         ui.painter().text(*pos, egui::Align2::CENTER_TOP, text, egui::FontId::proportional(14.0), egui::Color32::from_rgb(255, 80, 80));
@@ -403,6 +458,41 @@ impl ThaiEstimateApp {
                     if let Some((a, b)) = self.smart_rect {
                         let rect2 = egui::Rect::from_two_pos(a, b);
                         ui.painter().rect_stroke(rect2, 0.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 200, 255)));
+                    }
+                    // วาด highlight
+                    for (a, b) in &self.highlight_rects {
+                        let rect2 = egui::Rect::from_two_pos(*a, *b);
+                        ui.painter().rect_filled(rect2, 0.0, egui::Color32::from_rgba_unmultiplied(255, 220, 80, 80));
+                    }
+                    // วาด pen strokes
+                    for stroke in &self.pen_strokes {
+                        if stroke.len() >= 2 {
+                            let points: Vec<egui::Pos2> = stroke.iter().copied().collect();
+                            ui.painter().add(egui::Shape::line(points, egui::Stroke::new(2.5, egui::Color32::from_rgb(255, 80, 80))));
+                        }
+                    }
+                    // วาด pen stroke ปัจจุบัน
+                    if self.current_pen_stroke.len() >= 2 {
+                        let points: Vec<egui::Pos2> = self.current_pen_stroke.iter().copied().collect();
+                        ui.painter().add(egui::Shape::line(points, egui::Stroke::new(2.5, egui::Color32::from_rgb(255, 80, 80))));
+                    }
+                    // วาด arrows
+                    for (a, b) in &self.arrows {
+                        ui.painter().line_segment([*a, *b], egui::Stroke::new(2.5, egui::Color32::from_rgb(80, 200, 255)));
+                        // หัวลูกศร
+                        let dir = (*b - *a).normalized();
+                        let perp = egui::vec2(-dir.y, dir.x);
+                        let head_len = 12.0;
+                        let head1 = *b - dir * head_len + perp * 6.0;
+                        let head2 = *b - dir * head_len - perp * 6.0;
+                        ui.painter().line_segment([*b, head1], egui::Stroke::new(2.5, egui::Color32::from_rgb(80, 200, 255)));
+                        ui.painter().line_segment([*b, head2], egui::Stroke::new(2.5, egui::Color32::from_rgb(80, 200, 255)));
+                    }
+                    // วาด arrow ปัจจุบัน (จาก arrow_start ไป cursor)
+                    if let Some(start) = self.arrow_start {
+                        if let Some(pos) = response.interact_pointer_pos() {
+                            ui.painter().line_segment([start, pos], egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 200, 255).gamma_multiply(0.6)));
+                        }
                     }
                     // วาดจุดวัด (แปลงจากพิกัด PDF กลับเป็นพิกัดหน้าจอ)
                     for &(px, py) in &self.measure_points {
@@ -482,9 +572,28 @@ impl ThaiEstimateApp {
                     // Markup display
                     if self.smart_mode == 3 {
                         ui.horizontal(|ui| {
-                            ui.label("ข้อความ:"); ui.text_edit_singleline(&mut self.smart_text);
-                            if ui.button("🗑 ล้าง Markup").clicked() { self.smart_annotations.clear(); }
+                            ui.label("เครื่องมือ:");
+                            ui.selectable_value(&mut self.markup_tool, 0, "📝 ข้อความ");
+                            ui.selectable_value(&mut self.markup_tool, 1, "🖍 ไฮไลต์");
+                            ui.selectable_value(&mut self.markup_tool, 2, "✏️ ปากกา");
+                            ui.selectable_value(&mut self.markup_tool, 3, "➡️ ลูกศร");
                         });
+                        if self.markup_tool == 0 {
+                            ui.horizontal(|ui| {
+                                ui.label("ข้อความ:"); ui.text_edit_singleline(&mut self.smart_text);
+                            });
+                        }
+                        if self.markup_tool == 3 && self.arrow_start.is_some() {
+                            ui.label("คลิกจุดปลายลูกศร");
+                        }
+                        if ui.button("🗑 ล้าง Markup").clicked() {
+                            self.smart_annotations.clear();
+                            self.highlight_rects.clear();
+                            self.pen_strokes.clear();
+                            self.current_pen_stroke.clear();
+                            self.arrows.clear();
+                            self.arrow_start = None;
+                        }
                     }
                     // บันทึกการวัด
                     if ui.button("💾 บันทึกการวัด").clicked() {
