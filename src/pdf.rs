@@ -5,6 +5,7 @@ use pdfium_render::prelude::*;
 pub struct PdfViewer {
     pub path: String,
     pub scale: f32,
+    pub real_unit_per_px: f64,
     pub page_index: i32,
     pub total_pages: i32,
     pub points: Vec<(f32, f32)>,
@@ -21,7 +22,7 @@ impl PdfViewer {
         let pdfium = pdfium()?;
         let pdf = pdfium.load_pdf_from_file(path, None)?;
         let total = pdf.pages().len();
-        Ok(Self { path: path.to_string(), scale: 1.5, page_index: 0, total_pages: total, points: vec![] })
+        Ok(Self { path: path.to_string(), scale: 1.5, real_unit_per_px: 0.01, page_index: 0, total_pages: total, points: vec![] })
     }
 
     pub fn render_page(&self) -> Result<(Vec<u8>, i32, i32)> {

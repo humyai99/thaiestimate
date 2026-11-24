@@ -217,6 +217,8 @@ impl ThaiEstimateApp {
                 if ui.button("▶").clicked() && viewer.page_index + 1 < viewer.total_pages { viewer.page_index += 1; }
                 ui.label("ซูม:");
                 ui.add(egui::Slider::new(&mut viewer.scale, 0.5..=4.0).suffix("x"));
+                ui.label("หน่วยจริง/px:");
+                ui.add(egui::DragValue::new(&mut viewer.real_unit_per_px).speed(0.001).prefix("").suffix(" m"));
             });
             match viewer.render_page() {
                 Ok((bytes, w, h)) => {
@@ -234,8 +236,9 @@ impl ThaiEstimateApp {
                     if self.measure_points.len() >= 2 {
                         let p = self.measure_points[self.measure_points.len()-2];
                         let q = self.measure_points[self.measure_points.len()-1];
-                        let dist = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt();
-                        ui.label(egui::RichText::new(format!("ระยะ: {:.1} px", dist)).color(egui::Color32::from_rgb(120, 220, 140)));
+                        let dist_px = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt();
+                        let dist = dist_px as f64 * viewer.real_unit_per_px;
+                        ui.label(egui::RichText::new(format!("ระยะ: {:.2} m ({:.1} px)", dist, dist_px)).color(egui::Color32::from_rgb(120, 220, 140)));
                     }
                     // คำนวณพื้นที่ (polygon)
                     if self.measure_points.len() >= 3 {
@@ -246,8 +249,9 @@ impl ThaiEstimateApp {
                             area += (self.measure_points[i].0 as f64 * self.measure_points[j].1 as f64)
                                    - (self.measure_points[j].0 as f64 * self.measure_points[i].1 as f64);
                         }
-                        let area = area.abs() / 2.0;
-                        ui.label(egui::RichText::new(format!("พื้นที่: {:.1} px²", area)).color(egui::Color32::from_rgb(120, 190, 255)));
+                        let area_px = area.abs() / 2.0;
+                        let area = area_px * viewer.real_unit_per_px.powi(2);
+                        ui.label(egui::RichText::new(format!("พื้นที่: {:.2} m² ({:.1} px²)", area, area_px)).color(egui::Color32::from_rgb(120, 190, 255)));
                         if ui.button("📤 ส่งเข้า BOQ").clicked() {
                             if self.b_project == 0 {
                                 self.status_msg = "เลือกโครงการในแท็บ BOQ ก่อน".into();
