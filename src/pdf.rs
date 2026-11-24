@@ -15,10 +15,14 @@ fn pdfium() -> Result<Pdfium> {
     // ลำดับ: 1) libpdfium.so ข้างไฟล์ exe 2) ระบบ 3) เส้นทาง pypdfium2
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
     if let Some(dir) = exe_dir {
-        let bundled = dir.join("libpdfium.so");
-        if bundled.exists() {
-            if let Ok(bindings) = Pdfium::bind_to_library(bundled.to_string_lossy().as_ref()) {
-                return Ok(Pdfium::new(bindings));
+        // Windows: libpdfium.dll | Linux/macOS: libpdfium.so
+        let candidates = ["libpdfium.dll", "libpdfium.so", "libpdfium.dylib"];
+        for name in &candidates {
+            let bundled = dir.join(name);
+            if bundled.exists() {
+                if let Ok(bindings) = Pdfium::bind_to_library(bundled.to_string_lossy().as_ref()) {
+                    return Ok(Pdfium::new(bindings));
+                }
             }
         }
     }

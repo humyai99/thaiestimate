@@ -59,22 +59,48 @@ impl eframe::App for ThaiEstimateApp {
         style.spacing.item_spacing = egui::vec2(8.0, 8.0);
         ctx.set_style(style);
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("🏗️ ThaiEstimate").size(28.0).strong().color(egui::Color32::from_rgb(120, 190, 255)));
-                ui.label(egui::RichText::new("ถอดแบบ & ประมาณราคาก่อสร้าง").size(13.0).color(egui::Color32::from_rgb(160, 170, 190)));
-            });
+        // Sidebar
+        egui::SidePanel::left("sidebar").default_width(220.0).resizable(false).show(ctx, |ui| {
+            ui.add_space(12.0);
+            ui.label(egui::RichText::new("🏗️ ThaiEstimate").size(22.0).strong().color(egui::Color32::from_rgb(120, 190, 255)));
+            ui.label(egui::RichText::new("ถอดแบบ & ประมาณราคา").size(11.0).color(egui::Color32::from_rgb(140, 150, 170)));
             ui.separator();
+            ui.add_space(8.0);
+            let items = [
+                (0, "📋 โครงการ", "จัดการโครงการ"),
+                (1, "🧱 คลังราคา", "ฐานข้อมูลวัสดุ"),
+                (2, "📊 BOQ", "ใบประมาณราคา"),
+                (3, "📐 ถอดแบบ", "วัดระยะ/พื้นที่/Smart"),
+                (4, "🔩 เหล็ก", "แผนตัดเหล็ก"),
+            ];
+            for (id, label, desc) in &items {
+                let selected = self.tab == *id;
+                let btn = egui::Button::new(egui::RichText::new(*label).size(15.0).strong().color(if selected { egui::Color32::from_rgb(255,255,255) } else { egui::Color32::from_rgb(200, 210, 230) }))
+                    .fill(if selected { egui::Color32::from_rgb(30, 90, 160) } else { egui::Color32::from_rgb(22, 30, 48) })
+                    .stroke(egui::Stroke::new(1.0, if selected { egui::Color32::from_rgb(90, 170, 255) } else { egui::Color32::from_rgb(40, 50, 70) }))
+                    .rounding(egui::Rounding::same(8.0));
+                let resp = ui.add(btn.min_size(egui::vec2(190.0, 44.0)));
+                if resp.clicked() { self.tab = *id; }
+                ui.label(egui::RichText::new(*desc).size(10.0).color(egui::Color32::from_rgb(120, 130, 150)));
+                ui.add_space(4.0);
+            }
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new("v1.0.0").size(10.0).color(egui::Color32::from_rgb(100, 110, 130)));
+                ui.add_space(8.0);
+            });
+        });
 
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.tab, 0, "📋 โครงการ");
-                ui.selectable_value(&mut self.tab, 1, "🧱 คลังราคา");
-                ui.selectable_value(&mut self.tab, 2, "📊 BOQ");
-                ui.selectable_value(&mut self.tab, 3, "📐 ถอดแบบ");
-                ui.selectable_value(&mut self.tab, 4, "🔩 เหล็ก");
+                let title = match self.tab {
+                    0 => "โครงการ", 1 => "คลังราคา", 2 => "BOQ — ใบประมาณราคา",
+                    3 => "ถอดแบบ PDF", 4 => "แผนตัดเหล็ก", _ => "",
+                };
+                ui.label(egui::RichText::new(title).size(24.0).strong().color(egui::Color32::from_rgb(230, 235, 245)));
             });
             ui.separator();
+            ui.add_space(4.0);
 
             match self.tab {
                 0 => self.projects_tab(ui),
