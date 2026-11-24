@@ -108,3 +108,40 @@ pub fn delete_steel_bar(conn: &Connection, id: i64) -> Result<()> {
     conn.execute("DELETE FROM steel_bars WHERE id=?1", params![id])?;
     Ok(())
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ProjectExport {
+    pub code: String, pub name: String, pub owner: String, pub location: String, pub area: f64,
+    pub boq: Vec<BoqItemExport>,
+    pub steel: Vec<SteelBarExport>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct BoqItemExport { pub material_id: i64, pub quantity: f64, pub unit_price: f64, pub total: f64 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SteelBarExport { pub diameter: f64, pub length: f64, pub count: i64, pub weight_per_m: f64 }
+
+pub fn export_project(conn: &Connection, project_id: i64) -> Result<ProjectExport> {
+    let projects = list_projects(conn)?;
+    let project = projects.iter().find(|p| p.id == project_id).ok_or_else(|| anyhow::anyhow!("ไม่พบโครงการ"))?;
+    let items = list_boq(conn, project_id)?;
+    let bars = list_steel_bars(conn, project_id)?;
+    Ok(ProjectExport {
+        code: project.code.clone(), name: project.name.clone(), owner: project.owner.clone(),
+        location: project.location.clone(), area: project.area,
+        boq: items.iter().map(|i| BoqItemExport { material_id: i.material_id, quantity: i.quantity, unit_price: i.unit_price, total: i.total }).collect(),
+        steel: bars.iter().map(|b| SteelBarExport { diameter: b.diameter, length: b.length, count: b.count, weight_per_m: b.weight_per_m }).collect(),
+    })
+}
+
+pub fn import_project(conn: &Connection, data: &ProjectExport) -> Result<i64> {
+    let new_id = add_project(conn, &data.code, &data.name, &data.owner, &data.location, data.area)?;
+    for item in &data.boq {
+        add_boq_item(conn, new_id, item.material_id, item.quantity, item.unit_price)?;
+    }
+    for bar in &data.steel {
+        add_steel_bar(conn, new_id, bar.diameter, bar.length, bar.count)?;
+    }
+    Ok(new_id)
+}

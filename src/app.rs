@@ -95,6 +95,39 @@ impl ThaiEstimateApp {
             ui.label("ที่อยู่:"); ui.text_edit_singleline(&mut self.p_loc);
             ui.label("พื้นที่:"); ui.text_edit_singleline(&mut self.p_area);
         });
+        ui.horizontal(|ui| {
+            if ui.button("📤 Export JSON").clicked() {
+                if self.p_name.is_empty() { self.status_msg = "กรอกข้อมูลโครงการก่อน".into(); }
+                else {
+                    // find existing project by name
+                    if let Ok(projects) = db::list_projects(&self.conn) {
+                        if let Some(p) = projects.iter().find(|p| p.name == self.p_name) {
+                            match db::export_project(&self.conn, p.id) {
+                                Ok(data) => {
+                                    let path = format!("project_{}.json", p.code);
+                                    match std::fs::write(&path, serde_json::to_string_pretty(&data).unwrap()) {
+                                        Ok(_) => self.status_msg = format!("Export แล้ว: {}", path),
+                                        Err(e) => self.status_msg = format!("ผิดพลาด: {e}"),
+                                    }
+                                }
+                                Err(e) => self.status_msg = format!("ผิดพลาด: {e}"),
+                            }
+                        } else { self.status_msg = "ไม่พบโครงการ".into(); }
+                    }
+                }
+            }
+            if ui.button("📥 Import JSON").clicked() {
+                let path = format!("project_{}.json", self.p_code);
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    if let Ok(data) = serde_json::from_str::<db::ProjectExport>(&text) {
+                        match db::import_project(&self.conn, &data) {
+                            Ok(id) => self.status_msg = format!("Import สำเร็จ (id={})", id),
+                            Err(e) => self.status_msg = format!("ผิดพลาด: {e}"),
+                        }
+                    } else { self.status_msg = "JSON ไม่ถูกต้อง".into(); }
+                } else { self.status_msg = format!("ไม่พบไฟล์: {}", path); }
+            }
+        });
         if ui.button("➕ เพิ่มโครงการ").clicked() {
             let area: f64 = self.p_area.parse().unwrap_or(0.0);
             match db::add_project(&self.conn, &self.p_code, &self.p_name, &self.p_owner, &self.p_loc, area) {
