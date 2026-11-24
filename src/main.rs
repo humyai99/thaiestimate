@@ -1,4 +1,5 @@
 mod db;
+mod report;
 mod pdf;
 mod app;
 

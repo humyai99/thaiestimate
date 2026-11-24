@@ -193,6 +193,13 @@ impl ThaiEstimateApp {
                 });
                 ui.separator();
                 ui.label(egui::RichText::new(format!("รวมทั้งสิ้น: {:.2} บาท", grand)).size(20.0).strong().color(egui::Color32::from_rgb(255, 210, 90)));
+                if ui.button("📊 ส่งออก Excel").clicked() {
+                    let path = format!("BOQ_{}.xlsx", self.b_project);
+                    match crate::report::export_boq_excel(&self.conn, self.b_project, &path) {
+                        Ok(_) => self.status_msg = format!("ส่งออก Excel แล้ว: {}", path),
+                        Err(e) => self.status_msg = format!("ส่งออกไม่สำเร็จ: {e}"),
+                    }
+                }
             }
         } else { ui.label("เลือกโครงการเพื่อดู BOQ"); }
     }
