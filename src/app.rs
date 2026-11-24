@@ -352,8 +352,97 @@ impl ThaiEstimateApp {
             ui.text_edit_singleline(&mut self.pdf_path);
             if ui.button("📂 เปิด").clicked() {
                 match crate::pdf::PdfViewer::new(&self.pdf_path) {
-                    Ok(v) => { self.viewer = Some(v); self.measure_points.clear(); self.smart_rect = None; self.smart_count = 0; self.smart_annotations.clear(); self.status_msg = "เปิด PDF สำเร็จ".into(); }
+                    Ok(v) => { self.viewer = Some(v); self.measure_points.clear(); self.smart_rect = None; self.smart_count = 0; self.smart_annotations.clear(); self.highlight_rects.clear(); self.pen_strokes.clear(); self.arrows.clear(); self.status_msg = "เปิด PDF สำเร็จ".into(); }
                     Err(e) => self.status_msg = format!("เปิด PDF ไม่สำเร็จ: {e}"),
+                }
+            }
+        });
+        // บันทึก/เปิดงาน
+        ui.horizontal(|ui| {
+            if ui.button("💾 บันทึกงาน").clicked() {
+                if let Some(viewer) = &self.viewer {
+                    let work = serde_json::json!({
+                        "pdf_path": self.pdf_path,
+                        "page_index": viewer.page_index,
+                        "scale": viewer.scale,
+                        "measure_points": self.measure_points,
+                        "smart_count": self.smart_count,
+                        "smart_annotations": self.smart_annotations.iter().map(|(p, t)| serde_json::json!({"x": p.x, "y": p.y, "text": t})).collect::<Vec<_>>(),
+                        "highlight_rects": self.highlight_rects.iter().map(|(a, b)| serde_json::json!({"ax": a.x, "ay": a.y, "bx": b.x, "by": b.y})).collect::<Vec<_>>(),
+                        "pen_strokes": self.pen_strokes.iter().map(|s| s.iter().map(|p| serde_json::json!({"x": p.x, "y": p.y})).collect::<Vec<_>>()).collect::<Vec<_>>(),
+                        "arrows": self.arrows.iter().map(|(a, b)| serde_json::json!({"ax": a.x, "ay": a.y, "bx": b.x, "by": b.y})).collect::<Vec<_>>(),
+                    });
+                    let path = format!("{}.pdmm", self.pdf_path.trim_end_matches(".pdf"));
+                    match std::fs::write(&path, serde_json::to_string_pretty(&work).unwrap()) {
+                        Ok(_) => self.status_msg = format!("บันทึกงานแล้ว: {}", path),
+                        Err(e) => self.status_msg = format!("บันทึกไม่สำเร็จ: {e}"),
+                    }
+                } else {
+                    self.status_msg = "เปิด PDF ก่อน".into();
+                }
+            }
+            if ui.button("📂 เปิดงาน").clicked() {
+                let path = format!("{}.pdmm", self.pdf_path.trim_end_matches(".pdf"));
+                if std::path::Path::new(&path).exists() {
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => {
+                            if let Ok(work) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(pts) = work["measure_points"].as_array() {
+                                    self.measure_points = pts.iter().filter_map(|p| {
+                                        let x = p[0].as_f64()?;
+                                        let y = p[1].as_f64()?;
+                                        Some((x, y))
+                                    }).collect();
+                                }
+                                if let Some(count) = work["smart_count"].as_i64() {
+                                    self.smart_count = count as i32;
+                                }
+                                if let Some(annotations) = work["smart_annotations"].as_array() {
+                                    self.smart_annotations = annotations.iter().filter_map(|a| {
+                                        let x = a["x"].as_f64()?;
+                                        let y = a["y"].as_f64()?;
+                                        let text = a["text"].as_str()?.to_string();
+                                        Some((egui::pos2(x as f32, y as f32), text))
+                                    }).collect();
+                                }
+                                if let Some(highlights) = work["highlight_rects"].as_array() {
+                                    self.highlight_rects = highlights.iter().filter_map(|h| {
+                                        let ax = h["ax"].as_f64()?;
+                                        let ay = h["ay"].as_f64()?;
+                                        let bx = h["bx"].as_f64()?;
+                                        let by = h["by"].as_f64()?;
+                                        Some((egui::pos2(ax as f32, ay as f32), egui::pos2(bx as f32, by as f32)))
+                                    }).collect();
+                                }
+                                if let Some(strokes) = work["pen_strokes"].as_array() {
+                                    self.pen_strokes = strokes.iter().filter_map(|s| {
+                                        let pts = s.as_array()?;
+                                        let stroke: Vec<egui::Pos2> = pts.iter().filter_map(|p| {
+                                            let x = p["x"].as_f64()?;
+                                            let y = p["y"].as_f64()?;
+                                            Some(egui::pos2(x as f32, y as f32))
+                                        }).collect();
+                                        if stroke.is_empty() { None } else { Some(stroke) }
+                                    }).collect();
+                                }
+                                if let Some(arrows) = work["arrows"].as_array() {
+                                    self.arrows = arrows.iter().filter_map(|a| {
+                                        let ax = a["ax"].as_f64()?;
+                                        let ay = a["ay"].as_f64()?;
+                                        let bx = a["bx"].as_f64()?;
+                                        let by = a["by"].as_f64()?;
+                                        Some((egui::pos2(ax as f32, ay as f32), egui::pos2(bx as f32, by as f32)))
+                                    }).collect();
+                                }
+                                self.status_msg = format!("เปิดงานแล้ว: {}", path);
+                            } else {
+                                self.status_msg = "ไฟล์งานไม่ถูกต้อง".into();
+                            }
+                        }
+                        Err(e) => self.status_msg = format!("เปิดงานไม่สำเร็จ: {e}"),
+                    }
+                } else {
+                    self.status_msg = "ไม่พบไฟล์งาน .pdmm".into();
                 }
             }
         });
