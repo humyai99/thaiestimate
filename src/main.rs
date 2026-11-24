@@ -1,10 +1,10 @@
-// ThaiEstimate — โปรแกรมถอดแบบ & ประมาณราคาก่อสร้าง (Rust)
-// Phase 1: โครงสร้างโปรเจกต์ + ฐานข้อมูล SQLite
 mod db;
+mod app;
 
-fn main() -> anyhow::Result<()> {
-    let conn = db::init()?;
-    println!("ThaiEstimate v0.1.0 — database initialized OK");
-    // TODO: เปิดหน้าต่าง UI (egui)
-    Ok(())
+fn main() -> eframe::Result {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([1100.0, 750.0]).with_title("ThaiEstimate — ถอดแบบ & ประมาณราคา"),
+        ..Default::default()
+    };
+    eframe::run_native("ThaiEstimate", options, Box::new(|cc| Ok(Box::new(app::ThaiEstimateApp::new(cc)))))
 }
