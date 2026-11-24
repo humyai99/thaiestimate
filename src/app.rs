@@ -237,6 +237,31 @@ impl ThaiEstimateApp {
                         let dist = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt();
                         ui.label(egui::RichText::new(format!("ระยะ: {:.1} px", dist)).color(egui::Color32::from_rgb(120, 220, 140)));
                     }
+                    // คำนวณพื้นที่ (polygon)
+                    if self.measure_points.len() >= 3 {
+                        let n = self.measure_points.len();
+                        let mut area = 0.0_f64;
+                        for i in 0..n {
+                            let j = (i + 1) % n;
+                            area += (self.measure_points[i].0 as f64 * self.measure_points[j].1 as f64)
+                                   - (self.measure_points[j].0 as f64 * self.measure_points[i].1 as f64);
+                        }
+                        let area = area.abs() / 2.0;
+                        ui.label(egui::RichText::new(format!("พื้นที่: {:.1} px²", area)).color(egui::Color32::from_rgb(120, 190, 255)));
+                        if ui.button("📤 ส่งเข้า BOQ").clicked() {
+                            if self.b_project == 0 {
+                                self.status_msg = "เลือกโครงการในแท็บ BOQ ก่อน".into();
+                            } else if self.b_material == 0 {
+                                self.status_msg = "เลือกวัสดุในแท็บ BOQ ก่อน".into();
+                            } else {
+                                let price: f64 = self.b_price.parse().unwrap_or(0.0);
+                                match db::add_boq_item(&self.conn, self.b_project, self.b_material, area, price) {
+                                    Ok(_) => self.status_msg = format!("ส่งพื้นที่ {:.1} px² เข้า BOQ แล้ว", area),
+                                    Err(e) => self.status_msg = format!("ผิดพลาด: {e}"),
+                                }
+                            }
+                        }
+                    }
                     if ui.button("🗑 ล้างจุดวัด").clicked() { self.measure_points.clear(); }
                 }
                 Err(e) => { ui.label(format!("Render ไม่สำเร็จ: {e}")); }
