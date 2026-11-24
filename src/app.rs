@@ -14,7 +14,8 @@ pub struct ThaiEstimateApp {
     status_msg: String,
     pdf_path: String,
     viewer: Option<crate::pdf::PdfViewer>,
-    measure_points: Vec<(f32, f32)>,
+    measure_points: Vec<(f64, f64)>,
+    scale_input: String,
     smart_mode: i32,
     smart_count: i32,
     smart_rect: Option<(egui::Pos2, egui::Pos2)>,
@@ -25,6 +26,15 @@ pub struct ThaiEstimateApp {
 
 impl ThaiEstimateApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "noto_thai".into(),
+            egui::FontData::from_static(include_bytes!("../assets/NotoSansThai-Regular.ttf")),
+        );
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            fonts.families.entry(family).or_default().insert(0, "noto_thai".into());
+        }
+        _cc.egui_ctx.set_fonts(fonts);
         let conn = db::init().expect("init db failed");
         Self {
             conn, tab: 0,
@@ -35,6 +45,7 @@ impl ThaiEstimateApp {
             pdf_path: String::new(),
             viewer: None,
             measure_points: vec![],
+            scale_input: String::new(),
             smart_mode: 0,
             smart_count: 0,
             smart_rect: None,
@@ -50,20 +61,25 @@ impl eframe::App for ThaiEstimateApp {
         // โทนสีน้ำเงินเข้ม — มืออาชีพ
         let mut style = (*ctx.style()).clone();
         style.visuals.dark_mode = true;
-        style.visuals.panel_fill = egui::Color32::from_rgb(18, 24, 38);
-        style.visuals.window_fill = egui::Color32::from_rgb(22, 30, 48);
-        style.visuals.extreme_bg_color = egui::Color32::from_rgb(12, 17, 28);
-        style.visuals.faint_bg_color = egui::Color32::from_rgb(28, 36, 56);
-        style.visuals.selection.bg_fill = egui::Color32::from_rgb(30, 90, 160);
-        style.visuals.hyperlink_color = egui::Color32::from_rgb(90, 170, 255);
-        style.spacing.item_spacing = egui::vec2(8.0, 8.0);
+        style.visuals.panel_fill = egui::Color32::from_rgb(15, 23, 42);
+        style.visuals.window_fill = egui::Color32::from_rgb(30, 41, 59);
+        style.visuals.extreme_bg_color = egui::Color32::from_rgb(11, 18, 32);
+        style.visuals.faint_bg_color = egui::Color32::from_rgb(30, 41, 59);
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(37, 99, 235);
+        style.visuals.hyperlink_color = egui::Color32::from_rgb(96, 165, 250);
+        style.visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(30, 41, 59);
+        style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(30, 41, 59);
+        style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(51, 65, 85);
+        style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(37, 99, 235);
+        style.spacing.item_spacing = egui::vec2(10.0, 10.0);
+        style.spacing.button_padding = egui::vec2(12.0, 8.0);
         ctx.set_style(style);
 
         // Sidebar
-        egui::SidePanel::left("sidebar").default_width(220.0).resizable(false).show(ctx, |ui| {
-            ui.add_space(12.0);
-            ui.label(egui::RichText::new("🏗️ ThaiEstimate").size(22.0).strong().color(egui::Color32::from_rgb(120, 190, 255)));
-            ui.label(egui::RichText::new("ถอดแบบ & ประมาณราคา").size(11.0).color(egui::Color32::from_rgb(140, 150, 170)));
+        egui::SidePanel::left("sidebar").exact_width(232.0).resizable(false).frame(egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::same(18.0))).show(ctx, |ui| {
+            ui.add_space(8.0);
+            ui.label(egui::RichText::new("ThaiEstimate").size(23.0).strong().color(egui::Color32::from_rgb(147, 197, 253)));
+            ui.label(egui::RichText::new("ถอดแบบและประมาณราคา").size(13.0).color(egui::Color32::from_rgb(148, 163, 184)));
             ui.separator();
             ui.add_space(8.0);
             let items = [
@@ -75,14 +91,14 @@ impl eframe::App for ThaiEstimateApp {
             ];
             for (id, label, desc) in &items {
                 let selected = self.tab == *id;
-                let btn = egui::Button::new(egui::RichText::new(*label).size(15.0).strong().color(if selected { egui::Color32::from_rgb(255,255,255) } else { egui::Color32::from_rgb(200, 210, 230) }))
+                let btn = egui::Button::new(egui::RichText::new(*label).size(16.0).strong().color(if selected { egui::Color32::WHITE } else { egui::Color32::from_rgb(203, 213, 225) }))
                     .fill(if selected { egui::Color32::from_rgb(30, 90, 160) } else { egui::Color32::from_rgb(22, 30, 48) })
                     .stroke(egui::Stroke::new(1.0, if selected { egui::Color32::from_rgb(90, 170, 255) } else { egui::Color32::from_rgb(40, 50, 70) }))
-                    .rounding(egui::Rounding::same(8.0));
-                let resp = ui.add(btn.min_size(egui::vec2(190.0, 44.0)));
+                    .rounding(egui::Rounding::same(10.0));
+                let resp = ui.add(btn.min_size(egui::vec2(196.0, 48.0)));
                 if resp.clicked() { self.tab = *id; }
-                ui.label(egui::RichText::new(*desc).size(10.0).color(egui::Color32::from_rgb(120, 130, 150)));
-                ui.add_space(4.0);
+                ui.label(egui::RichText::new(*desc).size(12.0).color(egui::Color32::from_rgb(148, 163, 184)));
+                ui.add_space(8.0);
             }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                 ui.label(egui::RichText::new("v1.0.0").size(10.0).color(egui::Color32::from_rgb(100, 110, 130)));
@@ -90,17 +106,17 @@ impl eframe::App for ThaiEstimateApp {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_space(8.0);
+        egui::CentralPanel::default().frame(egui::Frame::central_panel(&ctx.style()).inner_margin(egui::Margin::same(26.0))).show(ctx, |ui| {
+            ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let title = match self.tab {
                     0 => "โครงการ", 1 => "คลังราคา", 2 => "BOQ — ใบประมาณราคา",
                     3 => "ถอดแบบ PDF", 4 => "แผนตัดเหล็ก", _ => "",
                 };
-                ui.label(egui::RichText::new(title).size(24.0).strong().color(egui::Color32::from_rgb(230, 235, 245)));
+                ui.label(egui::RichText::new(title).size(27.0).strong().color(egui::Color32::from_rgb(241, 245, 249)));
             });
             ui.separator();
-            ui.add_space(4.0);
+            ui.add_space(14.0);
 
             match self.tab {
                 0 => self.projects_tab(ui),
@@ -284,7 +300,7 @@ impl ThaiEstimateApp {
             ui.text_edit_singleline(&mut self.pdf_path);
             if ui.button("📂 เปิด").clicked() {
                 match crate::pdf::PdfViewer::new(&self.pdf_path) {
-                    Ok(v) => { self.viewer = Some(v); self.measure_points.clear(); self.status_msg = "เปิด PDF สำเร็จ".into(); }
+                    Ok(v) => { self.viewer = Some(v); self.measure_points.clear(); self.smart_rect = None; self.smart_count = 0; self.smart_annotations.clear(); self.status_msg = "เปิด PDF สำเร็จ".into(); }
                     Err(e) => self.status_msg = format!("เปิด PDF ไม่สำเร็จ: {e}"),
                 }
             }
@@ -296,6 +312,7 @@ impl ThaiEstimateApp {
                 ui.selectable_value(&mut self.smart_mode, 1, "📐 Smart Area");
                 ui.selectable_value(&mut self.smart_mode, 2, "🔢 Smart Count");
                 ui.selectable_value(&mut self.smart_mode, 3, "✏️ มาร์กอัป");
+                ui.selectable_value(&mut self.smart_mode, 4, "📐 ตั้งมาตราส่วน");
             });
             ui.horizontal(|ui| {
                 ui.label("หน้า:");
@@ -304,8 +321,8 @@ impl ThaiEstimateApp {
                 if ui.button("▶").clicked() && viewer.page_index + 1 < viewer.total_pages { viewer.page_index += 1; }
                 ui.label("ซูม:");
                 ui.add(egui::Slider::new(&mut viewer.scale, 0.5..=4.0).suffix("x"));
-                ui.label("หน่วยจริง/px:");
-                ui.add(egui::DragValue::new(&mut viewer.real_unit_per_px).speed(0.001).prefix("").suffix(" m"));
+                ui.label("มาตราส่วน:");
+                ui.label(format!("{:.4} m/px", viewer.current_scale()));
             });
             match viewer.render_page() {
                 Ok((bytes, w, h)) => {
@@ -317,8 +334,9 @@ impl ThaiEstimateApp {
                     if response.clicked() {
                         if let Some(pos) = response.interact_pointer_pos() {
                             let local = pos - rect.min;
+                            let (pdf_x, pdf_y) = viewer.screen_to_pdf(local.x, local.y);
                             match self.smart_mode {
-                                0 => self.measure_points.push((local.x, local.y)),
+                                0 => self.measure_points.push((pdf_x, pdf_y)),
                                 1 => {
                                     if self.smart_rect.is_none() { self.smart_rect = Some((pos, pos)); }
                                     else { self.smart_rect = Some((self.smart_rect.unwrap().0, pos)); }
@@ -329,6 +347,10 @@ impl ThaiEstimateApp {
                                         self.smart_annotations.push((pos, self.smart_text.clone()));
                                         self.smart_text.clear();
                                     }
+                                }
+                                4 => {
+                                    // ตั้งมาตราส่วน: เก็บ 2 จุด
+                                    self.measure_points.push((pdf_x, pdf_y));
                                 }
                                 _ => {}
                             }
@@ -342,25 +364,33 @@ impl ThaiEstimateApp {
                         let rect2 = egui::Rect::from_two_pos(a, b);
                         ui.painter().rect_stroke(rect2, 0.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 200, 255)));
                     }
+                    // วาดจุดวัด (แปลงจากพิกัด PDF กลับเป็นพิกัดหน้าจอ)
+                    for &(px, py) in &self.measure_points {
+                        let (sx, sy) = viewer.pdf_to_screen(px, py);
+                        let screen_pos = rect.min + egui::vec2(sx, sy);
+                        ui.painter().circle_filled(screen_pos, 4.0, egui::Color32::from_rgb(255, 100, 100));
+                    }
                     if self.measure_points.len() >= 2 {
                         let p = self.measure_points[self.measure_points.len()-2];
                         let q = self.measure_points[self.measure_points.len()-1];
-                        let dist_px = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt();
-                        let dist = dist_px as f64 * viewer.real_unit_per_px;
-                        ui.label(egui::RichText::new(format!("ระยะ: {:.2} m ({:.1} px)", dist, dist_px)).color(egui::Color32::from_rgb(120, 220, 140)));
+                        let dist_pdf = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt();
+                        let scale = viewer.current_scale();
+                        let dist = dist_pdf * scale;
+                        ui.label(egui::RichText::new(format!("ระยะ: {:.2} m ({:.1} pdf-px)", dist, dist_pdf)).color(egui::Color32::from_rgb(120, 220, 140)));
                     }
                     // คำนวณพื้นที่ (polygon)
-                    if self.measure_points.len() >= 3 {
+                    if self.measure_points.len() >= 3 && self.smart_mode == 0 {
                         let n = self.measure_points.len();
                         let mut area = 0.0_f64;
                         for i in 0..n {
                             let j = (i + 1) % n;
-                            area += (self.measure_points[i].0 as f64 * self.measure_points[j].1 as f64)
-                                   - (self.measure_points[j].0 as f64 * self.measure_points[i].1 as f64);
+                            area += (self.measure_points[i].0 * self.measure_points[j].1)
+                                   - (self.measure_points[j].0 * self.measure_points[i].1);
                         }
-                        let area_px = area.abs() / 2.0;
-                        let area = area_px * viewer.real_unit_per_px.powi(2);
-                        ui.label(egui::RichText::new(format!("พื้นที่: {:.2} m² ({:.1} px²)", area, area_px)).color(egui::Color32::from_rgb(120, 190, 255)));
+                        let area_pdf = area.abs() / 2.0;
+                        let scale = viewer.current_scale();
+                        let area = area_pdf * scale.powi(2);
+                        ui.label(egui::RichText::new(format!("พื้นที่: {:.2} m² ({:.1} pdf-px²)", area, area_pdf)).color(egui::Color32::from_rgb(120, 190, 255)));
                         if ui.button("📤 ส่งเข้า BOQ").clicked() {
                             if self.b_project == 0 {
                                 self.status_msg = "เลือกโครงการในแท็บ BOQ ก่อน".into();
@@ -369,17 +399,37 @@ impl ThaiEstimateApp {
                             } else {
                                 let price: f64 = self.b_price.parse().unwrap_or(0.0);
                                 match db::add_boq_item(&self.conn, self.b_project, self.b_material, area, price) {
-                                    Ok(_) => self.status_msg = format!("ส่งพื้นที่ {:.1} px² เข้า BOQ แล้ว", area),
+                                    Ok(_) => self.status_msg = format!("ส่งพื้นที่ {:.1} m² เข้า BOQ แล้ว", area),
                                     Err(e) => self.status_msg = format!("ผิดพลาด: {e}"),
                                 }
                             }
                         }
                     }
+                    // ตั้งมาตราส่วน: กรอกระยะจริง
+                    if self.smart_mode == 4 && self.measure_points.len() >= 2 {
+                        let p = self.measure_points[self.measure_points.len()-2];
+                        let q = self.measure_points[self.measure_points.len()-1];
+                        let dist_pdf = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt();
+                        ui.horizontal(|ui| {
+                            ui.label("ระยะจริง (m):");
+                            ui.text_edit_singleline(&mut self.scale_input);
+                            if ui.button("✅ ตั้งมาตราส่วน").clicked() {
+                                if let Ok(real_dist) = self.scale_input.parse::<f64>() {
+                                    let new_scale = real_dist / dist_pdf;
+                                    viewer.set_scale_for_page(viewer.page_index, new_scale);
+                                    self.status_msg = format!("ตั้งมาตราส่วนหน้า {} = {:.4} m/px", viewer.page_index + 1, new_scale);
+                                    self.measure_points.clear();
+                                } else {
+                                    self.status_msg = "กรอกระยะจริงไม่ถูกต้อง".into();
+                                }
+                            }
+                        });
+                    }
                     // Smart Area display
                     if self.smart_mode == 1 {
                         if let Some((a, b)) = self.smart_rect {
-                            let w = (b.x - a.x).abs() as f64 * viewer.real_unit_per_px;
-                            let h = (b.y - a.y).abs() as f64 * viewer.real_unit_per_px;
+                            let w = (b.x - a.x).abs() as f64 / viewer.scale as f64 * viewer.current_scale();
+                            let h = (b.y - a.y).abs() as f64 / viewer.scale as f64 * viewer.current_scale();
                             ui.label(egui::RichText::new(format!("Smart Area: {:.2} m² ({} x {} m)", w * h, w, h)).color(egui::Color32::from_rgb(80, 200, 255)));
                         }
                         if ui.button("🗑 ล้าง Area").clicked() { self.smart_rect = None; }
@@ -395,6 +445,36 @@ impl ThaiEstimateApp {
                             ui.label("ข้อความ:"); ui.text_edit_singleline(&mut self.smart_text);
                             if ui.button("🗑 ล้าง Markup").clicked() { self.smart_annotations.clear(); }
                         });
+                    }
+                    // บันทึกการวัด
+                    if ui.button("💾 บันทึกการวัด").clicked() {
+                        if self.b_project == 0 {
+                            self.status_msg = "เลือกโครงการในแท็บ BOQ ก่อน".into();
+                        } else if self.measure_points.len() >= 2 {
+                            let points_json = serde_json::to_string(&self.measure_points).unwrap_or_default();
+                            let scale = viewer.current_scale();
+                            let n = self.measure_points.len();
+                            let mut value = 0.0;
+                            if self.smart_mode == 0 && n >= 3 {
+                                let mut area = 0.0_f64;
+                                for i in 0..n {
+                                    let j = (i + 1) % n;
+                                    area += (self.measure_points[i].0 * self.measure_points[j].1) - (self.measure_points[j].0 * self.measure_points[i].1);
+                                }
+                                value = area.abs() / 2.0 * scale.powi(2);
+                            } else if n >= 2 {
+                                let p = self.measure_points[n-2];
+                                let q = self.measure_points[n-1];
+                                value = ((p.0-q.0).powi(2) + (p.1-q.1).powi(2)).sqrt() * scale;
+                            }
+                            let label = format!("หน้า {} โหมด {}", viewer.page_index + 1, self.smart_mode);
+                            match db::add_takeoff_measurement(&self.conn, self.b_project, &viewer.path, viewer.page_index, if self.smart_mode == 0 { "area" } else { "distance" }, &points_json, scale, value, &label) {
+                                Ok(_) => self.status_msg = "บันทึกการวัดแล้ว".into(),
+                                Err(e) => self.status_msg = format!("ผิดพลาด: {e}"),
+                            }
+                        } else {
+                            self.status_msg = "ต้องมีจุดวัดอย่างน้อย 2 จุด".into();
+                        }
                     }
                     if ui.button("🗑 ล้างจุดวัด").clicked() { self.measure_points.clear(); }
                 }

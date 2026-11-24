@@ -18,6 +18,18 @@ pub fn init() -> Result<Connection> {
             group_id INTEGER, name_th TEXT, name_en TEXT,
             unit TEXT, material_price REAL, labor_price REAL
         );
+        CREATE TABLE IF NOT EXISTS takeoff_measurements (
+            id INTEGER PRIMARY KEY,
+            project_id INTEGER,
+            pdf_path TEXT,
+            page_index INTEGER,
+            measure_type TEXT,
+            points_json TEXT,
+            real_unit_per_px REAL,
+            value REAL,
+            label TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
         CREATE TABLE IF NOT EXISTS steel_bars (
             id INTEGER PRIMARY KEY,
             project_id INTEGER, diameter REAL, length REAL, count INTEGER,
@@ -144,4 +156,40 @@ pub fn import_project(conn: &Connection, data: &ProjectExport) -> Result<i64> {
         add_steel_bar(conn, new_id, bar.diameter, bar.length, bar.count)?;
     }
     Ok(new_id)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TakeoffMeasurement {
+    pub id: i64,
+    pub project_id: i64,
+    pub pdf_path: String,
+    pub page_index: i32,
+    pub measure_type: String,
+    pub points_json: String,
+    pub real_unit_per_px: f64,
+    pub value: f64,
+    pub label: String,
+}
+
+pub fn add_takeoff_measurement(conn: &Connection, project_id: i64, pdf_path: &str, page_index: i32, measure_type: &str, points_json: &str, real_unit_per_px: f64, value: f64, label: &str) -> Result<i64> {
+    conn.execute("INSERT INTO takeoff_measurements (project_id, pdf_path, page_index, measure_type, points_json, real_unit_per_px, value, label) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![project_id, pdf_path, page_index, measure_type, points_json, real_unit_per_px, value, label])?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_takeoff_measurements(conn: &Connection, project_id: i64) -> Result<Vec<TakeoffMeasurement>> {
+    let mut stmt = conn.prepare("SELECT id, project_id, pdf_path, page_index, measure_type, points_json, real_unit_per_px, value, label FROM takeoff_measurements WHERE project_id=?1 ORDER BY id DESC")?;
+    let rows = stmt.query_map(params![project_id], |r| Ok(TakeoffMeasurement {
+        id: r.get(0)?, project_id: r.get(1)?, pdf_path: r.get(2)?, page_index: r.get(3)?,
+        measure_type: r.get(4)?, points_json: r.get(5)?, real_unit_per_px: r.get(6)?,
+        value: r.get(7)?, label: r.get(8)?,
+    }))?;
+    let mut out = vec![];
+    for r in rows { out.push(r?); }
+    Ok(out)
+}
+
+pub fn delete_takeoff_measurement(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("DELETE FROM takeoff_measurements WHERE id=?1", params![id])?;
+    Ok(())
 }
