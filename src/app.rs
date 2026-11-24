@@ -15,6 +15,11 @@ pub struct ThaiEstimateApp {
     pdf_path: String,
     viewer: Option<crate::pdf::PdfViewer>,
     measure_points: Vec<(f32, f32)>,
+    smart_mode: i32,
+    smart_count: i32,
+    smart_rect: Option<(egui::Pos2, egui::Pos2)>,
+    smart_text: String,
+    smart_annotations: Vec<(egui::Pos2, String)>,
     s_diameter: String, s_length: String, s_count: String,
 }
 
@@ -30,6 +35,11 @@ impl ThaiEstimateApp {
             pdf_path: String::new(),
             viewer: None,
             measure_points: vec![],
+            smart_mode: 0,
+            smart_count: 0,
+            smart_rect: None,
+            smart_text: String::new(),
+            smart_annotations: vec![],
             s_diameter: String::new(), s_length: String::new(), s_count: String::new(),
         }
     }
@@ -255,6 +265,13 @@ impl ThaiEstimateApp {
         });
         if let Some(viewer) = &mut self.viewer {
             ui.horizontal(|ui| {
+                ui.label("โหมด:");
+                ui.selectable_value(&mut self.smart_mode, 0, "📏 วัดระยะ");
+                ui.selectable_value(&mut self.smart_mode, 1, "📐 Smart Area");
+                ui.selectable_value(&mut self.smart_mode, 2, "🔢 Smart Count");
+                ui.selectable_value(&mut self.smart_mode, 3, "✏️ มาร์กอัป");
+            });
+            ui.horizontal(|ui| {
                 ui.label("หน้า:");
                 ui.label(format!("{}/{}", viewer.page_index + 1, viewer.total_pages));
                 if ui.button("◀").clicked() && viewer.page_index > 0 { viewer.page_index -= 1; }
@@ -274,8 +291,30 @@ impl ThaiEstimateApp {
                     if response.clicked() {
                         if let Some(pos) = response.interact_pointer_pos() {
                             let local = pos - rect.min;
-                            self.measure_points.push((local.x, local.y));
+                            match self.smart_mode {
+                                0 => self.measure_points.push((local.x, local.y)),
+                                1 => {
+                                    if self.smart_rect.is_none() { self.smart_rect = Some((pos, pos)); }
+                                    else { self.smart_rect = Some((self.smart_rect.unwrap().0, pos)); }
+                                }
+                                2 => { self.smart_count += 1; }
+                                3 => {
+                                    if !self.smart_text.is_empty() {
+                                        self.smart_annotations.push((pos, self.smart_text.clone()));
+                                        self.smart_text.clear();
+                                    }
+                                }
+                                _ => {}
+                            }
                         }
+                    }
+                    // วาด annotation และ rectangle
+                    for (pos, text) in &self.smart_annotations {
+                        ui.painter().text(*pos, egui::Align2::CENTER_TOP, text, egui::FontId::proportional(14.0), egui::Color32::from_rgb(255, 80, 80));
+                    }
+                    if let Some((a, b)) = self.smart_rect {
+                        let rect2 = egui::Rect::from_two_pos(a, b);
+                        ui.painter().rect_stroke(rect2, 0.0, egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 200, 255)));
                     }
                     if self.measure_points.len() >= 2 {
                         let p = self.measure_points[self.measure_points.len()-2];
@@ -309,6 +348,27 @@ impl ThaiEstimateApp {
                                 }
                             }
                         }
+                    }
+                    // Smart Area display
+                    if self.smart_mode == 1 {
+                        if let Some((a, b)) = self.smart_rect {
+                            let w = (b.x - a.x).abs() as f64 * viewer.real_unit_per_px;
+                            let h = (b.y - a.y).abs() as f64 * viewer.real_unit_per_px;
+                            ui.label(egui::RichText::new(format!("Smart Area: {:.2} m² ({} x {} m)", w * h, w, h)).color(egui::Color32::from_rgb(80, 200, 255)));
+                        }
+                        if ui.button("🗑 ล้าง Area").clicked() { self.smart_rect = None; }
+                    }
+                    // Smart Count display
+                    if self.smart_mode == 2 {
+                        ui.label(egui::RichText::new(format!("Smart Count: {} จุด", self.smart_count)).color(egui::Color32::from_rgb(255, 200, 80)));
+                        if ui.button("🗑 ล้าง Count").clicked() { self.smart_count = 0; }
+                    }
+                    // Markup display
+                    if self.smart_mode == 3 {
+                        ui.horizontal(|ui| {
+                            ui.label("ข้อความ:"); ui.text_edit_singleline(&mut self.smart_text);
+                            if ui.button("🗑 ล้าง Markup").clicked() { self.smart_annotations.clear(); }
+                        });
                     }
                     if ui.button("🗑 ล้างจุดวัด").clicked() { self.measure_points.clear(); }
                 }
