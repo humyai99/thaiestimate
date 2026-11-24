@@ -158,7 +158,7 @@ pub fn import_project(conn: &Connection, data: &ProjectExport) -> Result<i64> {
     Ok(new_id)
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct TakeoffMeasurement {
     pub id: i64,
     pub project_id: i64,

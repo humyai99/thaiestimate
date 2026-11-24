@@ -22,6 +22,7 @@ pub struct ThaiEstimateApp {
     smart_text: String,
     smart_annotations: Vec<(egui::Pos2, String)>,
     s_diameter: String, s_length: String, s_count: String,
+    loaded_measurement: Option<crate::db::TakeoffMeasurement>,
 }
 
 impl ThaiEstimateApp {
@@ -52,6 +53,7 @@ impl ThaiEstimateApp {
             smart_text: String::new(),
             smart_annotations: vec![],
             s_diameter: String::new(), s_length: String::new(), s_count: String::new(),
+            loaded_measurement: None,
         }
     }
 }
@@ -290,11 +292,49 @@ impl ThaiEstimateApp {
                     }
                 }
             }
+            // ส่วนวัดแบบที่บันทึกไว้ — คลิกเพื่อย้อนกลับไปดูบนแบบ
+            ui.separator();
+            ui.label(egui::RichText::new("📐 การวัดที่บันทึกไว้").size(16.0).strong().color(egui::Color32::from_rgb(147, 197, 253)));
+            if let Ok(measurements) = db::list_takeoff_measurements(&self.conn, self.b_project) {
+                if measurements.is_empty() {
+                    ui.label("ยังไม่มีการวัดที่บันทึกไว้");
+                } else {
+                    egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                        for m in &measurements {
+                            ui.horizontal(|ui| {
+                                let label = format!("หน้า {} | {} | {:.2} {}", m.page_index + 1, m.measure_type, m.value, if m.measure_type == "area" { "m²" } else { "m" });
+                                if ui.button(egui::RichText::new(&label).size(13.0)).clicked() {
+                                    self.loaded_measurement = Some(m.clone());
+                                    self.tab = 3; // ไปแท็บถอดแบบ
+                                    self.status_msg = format!("โหลดการวัด: {}", label);
+                                }
+                                if ui.button("🗑").clicked() {
+                                    let _ = db::delete_takeoff_measurement(&self.conn, m.id);
+                                }
+                            });
+                        }
+                    });
+                }
+            }
         } else { ui.label("เลือกโครงการเพื่อดู BOQ"); }
     }
 
     fn pdf_tab(&mut self, ui: &mut egui::Ui) {
         ui.heading("ถอดแบบ PDF");
+        // โหลดการวัดที่เลือกจาก BOQ
+        if let Some(m) = self.loaded_measurement.take() {
+            self.pdf_path = m.pdf_path.clone();
+            if let Ok(mut v) = crate::pdf::PdfViewer::new(&m.pdf_path) {
+                v.page_index = m.page_index;
+                let _ = v.update_page_dims();
+                v.set_scale_for_page(m.page_index, m.real_unit_per_px);
+                self.viewer = Some(v);
+                if let Ok(points) = serde_json::from_str::<Vec<(f64, f64)>>(&m.points_json) {
+                    self.measure_points = points;
+                }
+                self.status_msg = format!("โหลดการวัด: {} (หน้า {})", m.label, m.page_index + 1);
+            }
+        }
         ui.horizontal(|ui| {
             ui.label("ไฟล์ PDF:");
             ui.text_edit_singleline(&mut self.pdf_path);
