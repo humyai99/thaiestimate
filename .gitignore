@@ -4,3 +4,6 @@ thaiestimate.db
 target/
 *.exe
 *.dll
+thaiestimate
+libpdfium.so
+libpdfium.dll
